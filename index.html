@@ -3,25 +3,25 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- Configurações cruciais para o App Mobile -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+<meta name="theme-color" content="#080808">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Escala Louvor">
+
 <title>Escala do Louvor</title>
+
+<!-- Link para o Manifesto do Aplicativo -->
+<link rel="manifest" href="./manifest.json">
+
+<!-- Ícone para iPhones/iPads -->
+<link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/461/461244.png">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
-
-<!-- =====================================================
-     🔥 CONFIGURAÇÃO DO FIREBASE
-     
-     PASSO 1: Acesse https://console.firebase.google.com
-     PASSO 2: Crie um projeto (ex: "escala-louvor")
-     PASSO 3: Clique em "</> Web" para registrar o app
-     PASSO 4: Copie os dados de firebaseConfig e cole abaixo
-     PASSO 5: No Firebase, vá em Firestore Database → Criar
-              banco de dados → Modo de teste → OK
-     ===================================================== -->
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
@@ -30,7 +30,6 @@
     doc, onSnapshot, query, orderBy, serverTimestamp
   } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
 
-  // ⚠️ SUBSTITUA PELOS SEUS DADOS DO FIREBASE:
   const firebaseConfig = {
     apiKey: "AIzaSyABNJEfKqvbTawlgQGPoIXMvYWRmH9kCZY",
     authDomain: "louvor-escala-5d26f.firebaseapp.com",
@@ -40,12 +39,10 @@
     appId: "1:144171388952:web:54f59fa3dd9a149ab0f36d"
   };
 
-  // ── INIT ────────────────────────────────────────────
   const app = initializeApp(firebaseConfig);
   const db  = getFirestore(app);
   const col = collection(db, "escalas");
 
-  // ── ESTADO ──────────────────────────────────────────
   let escalas         = [];
   let editDocId       = null;
   let pendingDeleteId = null;
@@ -54,7 +51,6 @@
   const MESES  = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
   const SEMANA = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
 
-  // ── LISTENER TEMPO REAL ─────────────────────────────
   function iniciarListener() {
     setStatus('connecting');
     const q = query(col, orderBy("dataISO", "asc"), orderBy("horario", "asc"));
@@ -72,15 +68,15 @@
     );
   }
 
-  // ── STATUS INDICATOR ────────────────────────────────
   function setStatus(s) {
     const el = document.getElementById('status-dot');
     const tx = document.getElementById('status-text');
-    el.className = 'status-dot ' + s;
-    tx.textContent = s === 'online' ? 'Ao vivo' : s === 'connecting' ? 'Conectando...' : 'Sem conexão';
+    if(el && tx) {
+      el.className = 'status-dot ' + s;
+      tx.textContent = s === 'online' ? 'Ao vivo' : s === 'connecting' ? 'Conectando...' : 'Sem conexão';
+    }
   }
 
-  // ── TABS ────────────────────────────────────────────
   window.switchTab = function(tab) {
     document.getElementById('panel-form').classList.toggle('active',  tab === 'form');
     document.getElementById('panel-lista').classList.toggle('active', tab === 'lista');
@@ -88,7 +84,6 @@
     document.getElementById('tab-lista').classList.toggle('active',   tab === 'lista');
   };
 
-  // ── TOAST ───────────────────────────────────────────
   let toastTimer;
   window.showToast = function(msg, tipo = '') {
     const el = document.getElementById('toast');
@@ -99,22 +94,21 @@
     toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
   };
 
-  // ── FORM RESET ──────────────────────────────────────
   window.resetForm = function() {
     editDocId = null;
-    ['data','horario','vocal','back'].forEach(id => document.getElementById(id).value = '');
+    ['data','horario','vocal','back','hinos'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('form-title-text').textContent = 'Agendar nova data';
     document.getElementById('btn-salvar').textContent = 'Salvar na Escala';
     document.getElementById('btn-cancelar').classList.remove('visible');
     document.getElementById('btn-salvar').disabled = false;
   };
 
-  // ── SALVAR ──────────────────────────────────────────
   window.salvar = async function() {
     const data    = document.getElementById('data').value.trim();
     const horario = document.getElementById('horario').value.trim();
     const vocal   = document.getElementById('vocal').value.trim();
     const back    = document.getElementById('back').value.trim();
+    const hinos   = document.getElementById('hinos').value.trim(); // Novo campo
 
     if (!data)    { showToast('⚠️ Informe a data',             'danger'); document.getElementById('data').focus();    return; }
     if (!horario) { showToast('⚠️ Informe o horário',          'danger'); document.getElementById('horario').focus(); return; }
@@ -125,7 +119,8 @@
     btn.disabled = true;
     btn.textContent = 'Salvando...';
 
-    const obj = { dataISO: data, horario, vocal, back, updatedAt: serverTimestamp() };
+    // Incluindo a propriedade hinos no objeto de salvamento
+    const obj = { dataISO: data, horario, vocal, back, hinos, updatedAt: serverTimestamp() };
 
     try {
       if (editDocId) {
@@ -146,7 +141,6 @@
     }
   };
 
-  // ── EDITAR ──────────────────────────────────────────
   window.editarEscala = function(id) {
     const e = escalas.find(x => x.id === id);
     if (!e) return;
@@ -155,6 +149,7 @@
     document.getElementById('horario').value = e.horario;
     document.getElementById('vocal').value   = e.vocal;
     document.getElementById('back').value    = e.back;
+    document.getElementById('hinos').value   = e.hinos || ''; // Carrega os hinos se existirem
     document.getElementById('form-title-text').textContent = 'Editar / Substituir escala';
     document.getElementById('btn-salvar').textContent = 'Atualizar Escala';
     document.getElementById('btn-cancelar').classList.add('visible');
@@ -162,7 +157,6 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // ── EXCLUIR ─────────────────────────────────────────
   window.abrirDialog = function(id) {
     pendingDeleteId = id;
     const e = escalas.find(x => x.id === id);
@@ -197,33 +191,33 @@
     pendingDeleteId = null;
   };
 
-  // ── BADGE ───────────────────────────────────────────
   function atualizarBadge() {
     const el = document.getElementById('badge-count');
-    if (escalas.length > 0) {
-      el.textContent = escalas.length;
-      el.style.display = 'inline-flex';
-    } else {
-      el.style.display = 'none';
+    if(el) {
+      if (escalas.length > 0) {
+        el.textContent = escalas.length;
+        el.style.display = 'inline-flex';
+      } else {
+        el.style.display = 'none';
+      }
     }
   }
 
-  // ── DIAS BADGE ──────────────────────────────────────
   function calcDiasBadge(dataISO) {
     const hoje = new Date(); hoje.setHours(0,0,0,0);
     const d = new Date(dataISO + 'T00:00:00');
     const diff = Math.round((d - hoje) / 86400000);
     if (diff === 0)           return { label: 'Hoje',                       cls: 'hoje'   };
-    if (diff === 1)           return { label: 'Amanhã',                     cls: 'breve'  };
+    if (diff === 1)           return { label: 'Amanhã',                      cls: 'breve'  };
     if (diff > 1 && diff <= 7) return { label: `Em ${diff} dias`,           cls: 'breve'  };
-    if (diff > 7)             return { label: `Em ${diff} dias`,            cls: 'normal' };
-    if (diff === -1)          return { label: 'Ontem',                      cls: 'passado'};
-    return                           { label: `Há ${Math.abs(diff)} dias`,  cls: 'passado'};
+    if (diff > 7)              return { label: `Em ${diff} dias`,            cls: 'normal' };
+    if (diff === -1)          return { label: 'Ontem',                       cls: 'passado'};
+    return                            { label: `Há ${Math.abs(diff)} dias`,  cls: 'passado'};
   }
 
-  // ── RENDER LISTA ────────────────────────────────────
   function renderLista() {
     const container = document.getElementById('lista-escalas');
+    if(!container) return;
 
     if (escalas.length === 0) {
       container.innerHTML = `
@@ -241,6 +235,9 @@
       const mesAbrev  = MESES[parseInt(mes) - 1];
       const diaSemana = SEMANA[new Date(e.dataISO + 'T00:00:00').getDay()];
       const badge     = calcDiasBadge(e.dataISO);
+      
+      // Validação para exibir os hinos ou uma mensagem padrão caso não existam hinos antigos
+      const hinosExibicao = e.hinos ? esc(e.hinos) : '<span style="color: var(--text-faint); font-style: italic;">Nenhum hino adicionado</span>';
 
       return `
         <div class="escala-card">
@@ -272,6 +269,14 @@
                 <div class="escala-row-value">${esc(e.back)}</div>
               </div>
             </div>
+            <!-- Novo bloco visual para os Hinos -->
+            <div class="escala-row">
+              <span class="escala-row-icon">🎵</span>
+              <div class="escala-row-content">
+                <div class="escala-row-label">Hinos do Dia</div>
+                <div class="escala-row-value" style="color: var(--gold); white-space: pre-wrap;">${hinosExibicao}</div>
+              </div>
+            </div>
           </div>
           <div class="escala-card-footer">
             <button class="btn-edit-card" onclick="editarEscala('${e.id}')">✏️ Editar</button>
@@ -288,26 +293,33 @@
       .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  // ── BOOT ────────────────────────────────────────────
   iniciarListener();
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./service-worker.js')
+        .then(reg => console.log('App pronto para instalação (Service Worker Ativo)!', reg.scope))
+        .catch(err => console.error('Erro ao preparar instalação do App:', err));
+    });
+  }
 </script>
 
 <style>
   :root {
-    --navy:         #0f1e35;
-    --navy-mid:     #162844;
-    --navy-light:   #1e3557;
-    --navy-card:    #1a2f4a;
-    --accent:       #3b82f6;
-    --accent-glow:  rgba(59,130,246,0.18);
-    --accent-dim:   #1e4080;
-    --gold:         #d4a843;
-    --gold-dim:     rgba(212,168,67,0.15);
-    --text:         #e8edf4;
-    --text-muted:   #7e93ad;
-    --text-faint:   #3d5470;
-    --border:       rgba(59,130,246,0.18);
-    --border-soft:  rgba(255,255,255,0.06);
+    --navy:         #080808;
+    --navy-mid:     #101010;
+    --navy-light:   #1c1c1c;
+    --navy-card:    #141414;
+    --accent:       #C9A84C;
+    --accent-glow:  rgba(201,168,76,0.15);
+    --accent-dim:   #7A6020;
+    --gold:         #FFD700;
+    --gold-dim:     rgba(255,215,0,0.12);
+    --text:         #F0E6CC;
+    --text-muted:   #9A8860;
+    --text-faint:   #4A3F2A;
+    --border:       rgba(201,168,76,0.25);
+    --border-soft:  rgba(201,168,76,0.08);
     --danger:       #e05252;
     --danger-bg:    rgba(224,82,82,0.1);
     --success:      #34d399;
@@ -340,14 +352,6 @@
     z-index: 100;
   }
   .header-top { display: flex; align-items: center; gap: 14px; padding-bottom: 16px; }
-  .header-icon {
-    width: 44px; height: 44px;
-    background: var(--accent-glow);
-    border: 1px solid var(--border);
-    border-radius: 11px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 22px; flex-shrink: 0;
-  }
   .header-text h1 {
     font-family: 'Playfair Display', serif;
     font-size: 19px; font-weight: 700;
@@ -444,7 +448,7 @@
     letter-spacing: 2px; text-transform: uppercase;
     color: var(--text-muted); margin-bottom: 7px;
   }
-  .field-group input {
+  .field-group input, .field-group textarea {
     width: 100%;
     background: var(--navy-light);
     border: 1px solid var(--border-soft);
@@ -456,8 +460,15 @@
     transition: border-color 0.2s, background 0.2s;
     -webkit-appearance: none;
   }
-  .field-group input:focus { border-color: var(--accent); background: var(--navy-card); }
-  .field-group input::placeholder { color: var(--text-faint); }
+  .field-group input:focus, .field-group textarea:focus { border-color: var(--accent); background: var(--navy-card); }
+  .field-group input::placeholder, .field-group textarea::placeholder { color: var(--text-faint); }
+  
+  /* Ajustes específicos para a caixa de hinos */
+  .field-group textarea {
+    resize: vertical;
+    min-height: 80px;
+  }
+
   input[type="date"]::-webkit-calendar-picker-indicator,
   input[type="time"]::-webkit-calendar-picker-indicator {
     filter: invert(0.55) sepia(1) saturate(1.5) hue-rotate(180deg); cursor: pointer;
@@ -477,7 +488,7 @@
   .btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .btn-primary {
     background: var(--accent); color: #fff;
-    box-shadow: 0 4px 16px rgba(59,130,246,0.35);
+    box-shadow: 0 4px 16px rgba(201,168,76,0.3);
     margin-top: 20px;
   }
   .btn-secondary {
@@ -622,36 +633,18 @@
   .dialog-actions button:active { opacity: 0.75; }
   .btn-dialog-cancel  { background: var(--navy-light); color: var(--text-muted); }
   .btn-dialog-confirm { background: var(--danger); color: #fff; }
-
-  /* ── SETUP BANNER ───────────────────── */
-  .setup-banner {
-    background: rgba(212,168,67,0.08);
-    border: 1px solid rgba(212,168,67,0.3);
-    border-radius: var(--radius);
-    padding: 16px 18px;
-    margin-bottom: 20px;
-    display: none;
-  }
-  .setup-banner.visible { display: block; }
-  .setup-banner h3 { color: var(--gold); font-size: 14px; font-weight: 700; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
-  .setup-banner p  { color: var(--text-muted); font-size: 13px; line-height: 1.6; }
-  .setup-banner code {
-    background: rgba(0,0,0,0.3); color: var(--gold);
-    padding: 1px 6px; border-radius: 4px; font-size: 12px;
-  }
 </style>
 </head>
 <body>
 
 <header class="app-header">
   <div class="header-top">
-    <div class="header-icon">🎵</div>
     <div class="header-text">
       <h1>Escala do Louvor</h1>
-      <p>Ministério de Adoração</p>
+      <p>Ministério de Música</p>
     </div>
     <div class="header-status">
-      <span class="status-dot connecting" id="status-dot"></span>
+      <div id="status-dot" class="status-dot connecting"></div>
       <span id="status-text">Conectando...</span>
     </div>
   </div>
@@ -659,30 +652,23 @@
 </header>
 
 <nav class="nav-tabs">
-  <button class="nav-tab active" id="tab-form" onclick="switchTab('form')">Nova Escala</button>
-  <button class="nav-tab" id="tab-lista" onclick="switchTab('lista')">
-    Escalas <span class="badge" id="badge-count" style="display:none">0</span>
-  </button>
+  <button id="tab-lista" class="nav-tab active" onclick="switchTab('lista')">Escalas <span id="badge-count" class="badge" style="display:none;">0</span></button>
+  <button id="tab-form" class="nav-tab" onclick="switchTab('form')">Nova Escala</button>
 </nav>
 
 <main class="main">
-
-  <!-- AVISO DE CONFIGURAÇÃO -->
-  <div class="setup-banner" id="setup-banner">
-    <h3>⚙️ Configuração necessária</h3>
-    <p>
-      Antes de usar, substitua os dados do <code>firebaseConfig</code> no código.<br>
-      Siga o guia de instalação incluído neste pacote.
-    </p>
+  <!-- ABA LISTA -->
+  <div id="panel-lista" class="panel active">
+    <div id="lista-escalas"></div>
   </div>
 
-  <!-- PAINEL FORMULÁRIO -->
-  <div class="panel active" id="panel-form">
+  <!-- ABA FORMULÁRIO -->
+  <div id="panel-form" class="panel">
     <div class="form-card">
       <div class="form-card-title">
-        <span>📋</span>
         <span id="form-title-text">Agendar nova data</span>
       </div>
+      
       <div class="field-row">
         <div class="field-group">
           <label for="data">Data</label>
@@ -693,47 +679,42 @@
           <input type="time" id="horario">
         </div>
       </div>
+
       <div class="field-group">
-        <label for="vocal">🎤 Vocal Principal / Ministro</label>
-        <input type="text" id="vocal" placeholder="Ex: João da Silva" autocomplete="off">
+        <label for="vocal">Vocal Principal</label>
+        <input type="text" id="vocal" placeholder="Ex: Ana Clara">
       </div>
+
       <div class="field-group">
-        <label for="back">👥 Backing Vocals</label>
-        <input type="text" id="back" placeholder="Ex: Maria, Ana e Pedro" autocomplete="off">
+        <label for="back">Backing Vocals</label>
+        <input type="text" id="back" placeholder="Ex: Lucas, Mariana, Davi">
       </div>
-      <button class="btn btn-primary" id="btn-salvar" onclick="salvar()">Salvar na Escala</button>
-      <button class="btn btn-secondary" id="btn-cancelar" onclick="resetForm()">Cancelar edição</button>
+
+      <!-- NOVO CAMPO: HINOS DO DIA -->
+      <div class="field-group">
+        <label for="hinos">Hinos do Dia</label>
+        <textarea id="hinos" placeholder="1. Grandioso És Tu&#10;2. Porque Ele Vive&#10;3. Em Teus Braços"></textarea>
+      </div>
+
+      <button id="btn-salvar" class="btn btn-primary" onclick="salvar()">Salvar na Escala</button>
+      <button id="btn-cancelar" class="btn btn-secondary" onclick="resetForm(); switchTab('lista');">Cancelar Edição</button>
     </div>
   </div>
-
-  <!-- PAINEL LISTA -->
-  <div class="panel" id="panel-lista">
-    <div id="lista-escalas">
-      <div class="empty-state">
-        <div class="empty-icon">🎶</div>
-        <h3>Conectando ao banco...</h3>
-        <p>Aguarde um instante.</p>
-      </div>
-    </div>
-  </div>
-
 </main>
 
-<!-- DIALOG CONFIRMAÇÃO -->
-<div class="overlay" id="overlay" onclick="fecharDialog(event)">
+<!-- MODAL CONFIRMAÇÃO EXCLUSÃO -->
+<div id="overlay" class="overlay" onclick="fecharDialog(event)">
   <div class="dialog">
-    <h3>Remover escala?</h3>
+    <h3>Remover Escala?</h3>
     <p id="dialog-desc">Esta ação não pode ser desfeita.</p>
     <div class="dialog-actions">
-      <button class="btn-dialog-cancel"  onclick="fecharDialog()">Cancelar</button>
+      <button class="btn-dialog-cancel" onclick="fecharDialog()">Cancelar</button>
       <button class="btn-dialog-confirm" onclick="confirmarExclusao()">Remover</button>
     </div>
   </div>
 </div>
 
-<!-- TOAST -->
-<div class="toast" id="toast"></div>
+<div id="toast" class="toast"></div>
 
 </body>
 </html>
-
