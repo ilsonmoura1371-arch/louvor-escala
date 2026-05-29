@@ -14,7 +14,7 @@
 <link rel="manifest" href="./manifest.json">
 
 <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/461/461244.png">
-
+<link rel="manifest" href="manifest.json">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3003/3003117.png">
@@ -242,7 +242,13 @@
                 <span class="month">${mesAbrev}</span>
               </div>
               <div class="escala-date-info">
-                <span class="escala-date-full">${diaSemana}, ${dataBR}</span>
+                if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js')
+      .then(reg => console.log('App pronto!', reg.scope))
+      .catch(err => console.log('Erro SW:', err));
+  });
+}
                 <span class="escala-time-badge">🕐 ${e.horario}</span>
               </div>
             </div>
