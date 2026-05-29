@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Escala - Equipe de Louvor</title>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --success-color: #2ecc71;
+            --danger-color: #e74c3c;
+            --light-bg: #f8f9fa;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: var(--light-bg);
+            color: #333;
+            padding: 15px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            padding: 20px 0;
+            background: var(--primary-color);
+            color: white;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0,1);
+        }
+
+        .card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        h2 {
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+            color: var(--primary-color);
+            border-bottom: 2px solid var(--light-bg);
+            padding-bottom: 5px;
+        }
+
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 1rem;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background: var(--secondary-color);
+            border: none;
+            color: white;
+            font-size: 1rem;
+            font-weight: bold;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #2980b9;
+        }
+
+        button.btn-danger {
+            background: var(--danger-color);
+            padding: 6px 10px;
+            font-size: 0.8rem;
+            width: auto;
+        }
+
+        button.btn-edit {
+            background: #f39c12;
+            padding: 6px 10px;
+            font-size: 0.8rem;
+            width: auto;
+            margin-right: 5px;
+        }
+
+        .escala-item {
+            background: white;
+            border-left: 5px solid var(--secondary-color);
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            position: relative;
+        }
+
+        .escala-info p {
+            margin-bottom: 5px;
+            font-size: 0.95rem;
+        }
+
+        .meta-dados {
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+
+        .actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 10px;
+        }
+
+        .badge {
+            background: #e1f5fe;
+            color: #0288d1;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Escala do Louvor</h1>
+        <p>Gestão de Ministração e Backing Vocals</p>
+    </header>
+
+    <div class="card">
+        <h2 id="form-title">Agendar Nova Data</h2>
+        <form id="escala-form">
+            <input type="hidden" id="edit-index">
+            
+            <div class="form-group">
+                <label for="data">Data:</label>
+                <input type="date" id="data" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="horario">Horário:</label>
+                <input type="time" id="horario" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="vocal">Vocal Principal / Ministro:</label>
+                <input type="text" id="vocal" placeholder="Ex: João da Silva" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="back">Backing Vocals:</label>
+                <input type="text" id="back" placeholder="Ex: Maria, Ana e Pedro" required>
+            </div>
+            
+            <button type="submit" id="btn-salvar">Salvar na Escala</button>
+            <button type="button" id="btn-cancelar" style="background:#95a5a6; margin-top:5px; display:none;">Cancelar Edição</button>
+        </form>
+    </div>
+
+    <h2>Escalas Agendadas</h2>
+    <div id="lista-escalas">
+        </div>
+</div>
+
+<script>
+    // Gerenciamento de Estado do App
+    let escalas = JSON.parse(localStorage.getItem('escalas_louvor')) || [];
+    const form = document.getElementById('escala-form');
+    const listaEscalas = document.getElementById('lista-escalas');
+    const editIndexField = document.getElementById('edit-index');
+    const formTitle = document.getElementById('form-title');
+    const btnCancelar = document.getElementById('btn-cancelar');
+
+    // Função para renderizar a lista na tela
+    function renderEscalas() {
+        listaEscalas.innerHTML = '';
+        
+        if (escalas.length === 0) {
+            listaEscalas.innerHTML = '<p style="text-align:center; color:#7f8c8d;">Nenhuma escala agendada.</p>';
+            return;
+        }
+
+        // Ordenar por data mais recente
+        escalas.sort((a, b) => new Date(a.data + 'T' + a.horario) - new Date(b.data + 'T' + b.horario));
+
+        escalas.forEach((escala, index) => {
+            // Formatar data para padrão brasileiro (DD/MM/AAAA)
+            const dataFormatada = escala.data.split('-').reverse().join('/');
+
+            const item = document.createElement('div');
+            item.className = 'escala-item';
+            item.innerHTML = `
+                <div class="escala-info">
+                    <p class="meta-dados">📅 ${dataFormatada} às ⏰ ${escala.horario}</p>
+                    <p><strong>🎤 Vocal:</strong> ${escala.vocal}</p>
+                    <p><strong>👥 Backs:</strong> ${escala.back}</p>
+                </div>
+                <div class="actions">
+                    <button class="btn-edit" onclick="editarEscala(${index})">Substituir/Editar</button>
+                    <button class="btn-danger" onclick="excluirEscala(${index})">Excluir</button>
+                </div>
+            `;
+            listaEscalas.appendChild(item);
+        });
+    }
+
+    // Função para adicionar ou editar
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const index = editIndexField.value;
+        const novaEscala = {
+            data: document.getElementById('data').value,
+            horario: document.getElementById('horario').value,
+            vocal: document.getElementById('vocal').value,
+            back: document.getElementById('back').value
+        };
+
+        if (index === '') {
+            // Incluir novo
+            escalas.push(novaEscala);
+        } else {
+            // Substituir existente (Editar)
+            escalas[index] = novaEscala;
+            resetForm();
+        }
+
+        salvarDados();
+        renderEscalas();
+        form.reset();
+    });
+
+    // Função para preparar os dados para substituição/edição
+    window.editarEscala = function(index) {
+        const esc = escalas[index];
+        document.getElementById('data').value = esc.data;
+        document.getElementById('horario').value = esc.horario;
+        document.getElementById('vocal').value = esc.vocal;
+        document.getElementById('back').value = esc.back;
+        
+        editIndexField.value = index;
+        formTitle.innerText = "Substituir / Editar Integrantes";
+        document.getElementById('btn-salvar').innerText = "Atualizar Escala";
+        btnCancelar.style.display = 'block';
+        window.scrollTo({top: 0, behavior: 'smooth'});
+    };
+
+    // Cancelar Edição
+    btnCancelar.addEventListener('click', resetForm);
+
+    function resetForm() {
+        form.reset();
+        editIndexField.value = '';
+        formTitle.innerText = "Agendar Nova Data";
+        document.getElementById('btn-salvar').innerText = "Salvar na Escala";
+        btnCancelar.style.display = 'none';
+    }
+
+    // Função para excluir data
+    window.excluirEscala = function(index) {
+        if(confirm("Tem certeza que deseja remover esta data da escala?")) {
+            escalas.splice(index, 1);
+            salvarDados();
+            renderEscalas();
+            resetForm();
+        }
+    };
+
+    // Salvar no LocalStorage do celular
+    function salvarDados() {
+        localStorage.setItem('escalas_louvor', JSON.stringify(escalas));
+    }
+
+    // Inicializar app
+    renderEscalas();
+</script>
+
+</body>
+</html>
