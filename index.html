@@ -1,304 +1,739 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Escala - Equipe de Louvor</title>
-    <style>
-        :root {
-            --primary-color: #2c3e50;
-            --secondary-color: #3498db;
-            --success-color: #2ecc71;
-            --danger-color: #e74c3c;
-            --light-bg: #f8f9fa;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Escala do Louvor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
+<!-- =====================================================
+     🔥 CONFIGURAÇÃO DO FIREBASE
+     
+     PASSO 1: Acesse https://console.firebase.google.com
+     PASSO 2: Crie um projeto (ex: "escala-louvor")
+     PASSO 3: Clique em "</> Web" para registrar o app
+     PASSO 4: Copie os dados de firebaseConfig e cole abaixo
+     PASSO 5: No Firebase, vá em Firestore Database → Criar
+              banco de dados → Modo de teste → OK
+     ===================================================== -->
 
-        body {
-            background-color: var(--light-bg);
-            color: #333;
-            padding: 15px;
-        }
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js";
+  import {
+    getFirestore, collection, addDoc, updateDoc, deleteDoc,
+    doc, onSnapshot, query, orderBy, serverTimestamp
+  } from "https://www.gstatic.com/firebasejs/11.1.0/firebase-firestore.js";
 
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-        }
+  // ⚠️ SUBSTITUA PELOS SEUS DADOS DO FIREBASE:
+  const firebaseConfig = {
+    apiKey: "AIzaSyABNJEfKqvbTawlgQGPoIXMvYWRmH9kCZY",
+    authDomain: "louvor-escala-5d26f.firebaseapp.com",
+    projectId: "louvor-escala-5d26f",
+    storageBucket: "louvor-escala-5d26f.firebasestorage.app",
+    messagingSenderId: "144171388952",
+    appId: "1:144171388952:web:54f59fa3dd9a149ab0f36d"
+  };
 
-        header {
-            text-align: center;
-            padding: 20px 0;
-            background: var(--primary-color);
-            color: white;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0,1);
-        }
+  // ── INIT ────────────────────────────────────────────
+  const app = initializeApp(firebaseConfig);
+  const db  = getFirestore(app);
+  const col = collection(db, "escalas");
 
-        .card {
-            background: white;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        }
+  // ── ESTADO ──────────────────────────────────────────
+  let escalas         = [];
+  let editDocId       = null;
+  let pendingDeleteId = null;
+  let unsubscribe     = null;
 
-        h2 {
-            margin-bottom: 15px;
-            font-size: 1.2rem;
-            color: var(--primary-color);
-            border-bottom: 2px solid var(--light-bg);
-            padding-bottom: 5px;
-        }
+  const MESES  = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  const SEMANA = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
 
-        .form-group {
-            margin-bottom: 12px;
-        }
+  // ── LISTENER TEMPO REAL ─────────────────────────────
+  function iniciarListener() {
+    setStatus('connecting');
+    const q = query(col, orderBy("dataISO", "asc"), orderBy("horario", "asc"));
+    unsubscribe = onSnapshot(q,
+      (snapshot) => {
+        escalas = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        setStatus('online');
+        renderLista();
+        atualizarBadge();
+      },
+      (error) => {
+        console.error(error);
+        setStatus('error');
+      }
+    );
+  }
 
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: 600;
-            font-size: 0.9rem;
-        }
+  // ── STATUS INDICATOR ────────────────────────────────
+  function setStatus(s) {
+    const el = document.getElementById('status-dot');
+    const tx = document.getElementById('status-text');
+    el.className = 'status-dot ' + s;
+    tx.textContent = s === 'online' ? 'Ao vivo' : s === 'connecting' ? 'Conectando...' : 'Sem conexão';
+  }
 
-        input, select {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            font-size: 1rem;
-        }
+  // ── TABS ────────────────────────────────────────────
+  window.switchTab = function(tab) {
+    document.getElementById('panel-form').classList.toggle('active',  tab === 'form');
+    document.getElementById('panel-lista').classList.toggle('active', tab === 'lista');
+    document.getElementById('tab-form').classList.toggle('active',    tab === 'form');
+    document.getElementById('tab-lista').classList.toggle('active',   tab === 'lista');
+  };
 
-        button {
-            width: 100%;
-            padding: 12px;
-            background: var(--secondary-color);
-            border: none;
-            color: white;
-            font-size: 1rem;
-            font-weight: bold;
-            border-radius: 5px;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
+  // ── TOAST ───────────────────────────────────────────
+  let toastTimer;
+  window.showToast = function(msg, tipo = '') {
+    const el = document.getElementById('toast');
+    el.innerHTML = msg;
+    el.className = 'toast ' + tipo;
+    clearTimeout(toastTimer);
+    el.classList.add('show');
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+  };
 
-        button:hover {
-            background: #2980b9;
-        }
+  // ── FORM RESET ──────────────────────────────────────
+  window.resetForm = function() {
+    editDocId = null;
+    ['data','horario','vocal','back'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('form-title-text').textContent = 'Agendar nova data';
+    document.getElementById('btn-salvar').textContent = 'Salvar na Escala';
+    document.getElementById('btn-cancelar').classList.remove('visible');
+    document.getElementById('btn-salvar').disabled = false;
+  };
 
-        button.btn-danger {
-            background: var(--danger-color);
-            padding: 6px 10px;
-            font-size: 0.8rem;
-            width: auto;
-        }
+  // ── SALVAR ──────────────────────────────────────────
+  window.salvar = async function() {
+    const data    = document.getElementById('data').value.trim();
+    const horario = document.getElementById('horario').value.trim();
+    const vocal   = document.getElementById('vocal').value.trim();
+    const back    = document.getElementById('back').value.trim();
 
-        button.btn-edit {
-            background: #f39c12;
-            padding: 6px 10px;
-            font-size: 0.8rem;
-            width: auto;
-            margin-right: 5px;
-        }
+    if (!data)    { showToast('⚠️ Informe a data',             'danger'); document.getElementById('data').focus();    return; }
+    if (!horario) { showToast('⚠️ Informe o horário',          'danger'); document.getElementById('horario').focus(); return; }
+    if (!vocal)   { showToast('⚠️ Informe o vocal principal',  'danger'); document.getElementById('vocal').focus();   return; }
+    if (!back)    { showToast('⚠️ Informe os backing vocals',  'danger'); document.getElementById('back').focus();    return; }
 
-        .escala-item {
-            background: white;
-            border-left: 5px solid var(--secondary-color);
-            padding: 15px;
-            border-radius: 4px;
-            margin-bottom: 15px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            position: relative;
-        }
+    const btn = document.getElementById('btn-salvar');
+    btn.disabled = true;
+    btn.textContent = 'Salvando...';
 
-        .escala-info p {
-            margin-bottom: 5px;
-            font-size: 0.95rem;
-        }
+    const obj = { dataISO: data, horario, vocal, back, updatedAt: serverTimestamp() };
 
-        .meta-dados {
-            font-weight: bold;
-            color: var(--primary-color);
-        }
+    try {
+      if (editDocId) {
+        await updateDoc(doc(db, "escalas", editDocId), obj);
+        showToast('✓ Escala atualizada', 'success');
+      } else {
+        obj.createdAt = serverTimestamp();
+        await addDoc(col, obj);
+        showToast('✓ Escala salva', 'success');
+      }
+      resetForm();
+      switchTab('lista');
+    } catch (e) {
+      console.error(e);
+      showToast('❌ Erro ao salvar. Verifique a conexão.', 'danger');
+      btn.disabled = false;
+      btn.textContent = editDocId ? 'Atualizar Escala' : 'Salvar na Escala';
+    }
+  };
 
-        .actions {
-            display: flex;
-            justify-content: flex-end;
-            margin-top: 10px;
-        }
+  // ── EDITAR ──────────────────────────────────────────
+  window.editarEscala = function(id) {
+    const e = escalas.find(x => x.id === id);
+    if (!e) return;
+    editDocId = id;
+    document.getElementById('data').value    = e.dataISO;
+    document.getElementById('horario').value = e.horario;
+    document.getElementById('vocal').value   = e.vocal;
+    document.getElementById('back').value    = e.back;
+    document.getElementById('form-title-text').textContent = 'Editar / Substituir escala';
+    document.getElementById('btn-salvar').textContent = 'Atualizar Escala';
+    document.getElementById('btn-cancelar').classList.add('visible');
+    switchTab('form');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
-        .badge {
-            background: #e1f5fe;
-            color: #0288d1;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-size: 0.8rem;
-            font-weight: bold;
-        }
-    </style>
+  // ── EXCLUIR ─────────────────────────────────────────
+  window.abrirDialog = function(id) {
+    pendingDeleteId = id;
+    const e = escalas.find(x => x.id === id);
+    if (!e) return;
+    const [ano, mes, dia] = e.dataISO.split('-');
+    document.getElementById('dialog-desc').textContent =
+      `Você vai remover a escala do dia ${dia}/${mes}/${ano} às ${e.horario}. Esta ação não pode ser desfeita.`;
+    document.getElementById('overlay').classList.add('active');
+  };
+
+  window.fecharDialog = function(e) {
+    if (e && e.target !== document.getElementById('overlay')) return;
+    document.getElementById('overlay').classList.remove('active');
+    pendingDeleteId = null;
+  };
+
+  window.confirmarExclusao = async function() {
+    if (!pendingDeleteId) return;
+    const btn = document.querySelector('.btn-dialog-confirm');
+    btn.textContent = 'Removendo...';
+    btn.disabled = true;
+    try {
+      await deleteDoc(doc(db, "escalas", pendingDeleteId));
+      if (editDocId === pendingDeleteId) resetForm();
+      showToast('🗑 Escala removida', 'danger');
+    } catch (e) {
+      showToast('❌ Erro ao remover', 'danger');
+    }
+    btn.textContent = 'Remover';
+    btn.disabled = false;
+    document.getElementById('overlay').classList.remove('active');
+    pendingDeleteId = null;
+  };
+
+  // ── BADGE ───────────────────────────────────────────
+  function atualizarBadge() {
+    const el = document.getElementById('badge-count');
+    if (escalas.length > 0) {
+      el.textContent = escalas.length;
+      el.style.display = 'inline-flex';
+    } else {
+      el.style.display = 'none';
+    }
+  }
+
+  // ── DIAS BADGE ──────────────────────────────────────
+  function calcDiasBadge(dataISO) {
+    const hoje = new Date(); hoje.setHours(0,0,0,0);
+    const d = new Date(dataISO + 'T00:00:00');
+    const diff = Math.round((d - hoje) / 86400000);
+    if (diff === 0)           return { label: 'Hoje',                       cls: 'hoje'   };
+    if (diff === 1)           return { label: 'Amanhã',                     cls: 'breve'  };
+    if (diff > 1 && diff <= 7) return { label: `Em ${diff} dias`,           cls: 'breve'  };
+    if (diff > 7)             return { label: `Em ${diff} dias`,            cls: 'normal' };
+    if (diff === -1)          return { label: 'Ontem',                      cls: 'passado'};
+    return                           { label: `Há ${Math.abs(diff)} dias`,  cls: 'passado'};
+  }
+
+  // ── RENDER LISTA ────────────────────────────────────
+  function renderLista() {
+    const container = document.getElementById('lista-escalas');
+
+    if (escalas.length === 0) {
+      container.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">🎶</div>
+          <h3>Nenhuma escala ainda</h3>
+          <p>Toque em "Nova Escala" para<br>começar a organizar a equipe.</p>
+        </div>`;
+      return;
+    }
+
+    const html = escalas.map(e => {
+      const [ano, mes, dia] = e.dataISO.split('-');
+      const dataBR    = `${dia}/${mes}/${ano}`;
+      const mesAbrev  = MESES[parseInt(mes) - 1];
+      const diaSemana = SEMANA[new Date(e.dataISO + 'T00:00:00').getDay()];
+      const badge     = calcDiasBadge(e.dataISO);
+
+      return `
+        <div class="escala-card">
+          <div class="escala-card-header">
+            <div class="escala-date-block">
+              <div class="escala-date-num">
+                <span class="day">${dia}</span>
+                <span class="month">${mesAbrev}</span>
+              </div>
+              <div class="escala-date-info">
+                <span class="escala-date-full">${diaSemana}, ${dataBR}</span>
+                <span class="escala-time-badge">🕐 ${e.horario}</span>
+              </div>
+            </div>
+            <span class="dias-badge ${badge.cls}">${badge.label}</span>
+          </div>
+          <div class="escala-card-body">
+            <div class="escala-row">
+              <span class="escala-row-icon">🎤</span>
+              <div class="escala-row-content">
+                <div class="escala-row-label">Vocal Principal</div>
+                <div class="escala-row-value">${esc(e.vocal)}</div>
+              </div>
+            </div>
+            <div class="escala-row">
+              <span class="escala-row-icon">👥</span>
+              <div class="escala-row-content">
+                <div class="escala-row-label">Backing Vocals</div>
+                <div class="escala-row-value">${esc(e.back)}</div>
+              </div>
+            </div>
+          </div>
+          <div class="escala-card-footer">
+            <button class="btn-edit-card" onclick="editarEscala('${e.id}')">✏️ Editar</button>
+            <button class="btn-del-card"  onclick="abrirDialog('${e.id}')">🗑 Excluir</button>
+          </div>
+        </div>`;
+    }).join('');
+
+    container.innerHTML = `<div class="escala-list">${html}</div>`;
+  }
+
+  function esc(str) {
+    return String(str || '')
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── BOOT ────────────────────────────────────────────
+  iniciarListener();
+</script>
+
+<style>
+  :root {
+    --navy:         #0f1e35;
+    --navy-mid:     #162844;
+    --navy-light:   #1e3557;
+    --navy-card:    #1a2f4a;
+    --accent:       #3b82f6;
+    --accent-glow:  rgba(59,130,246,0.18);
+    --accent-dim:   #1e4080;
+    --gold:         #d4a843;
+    --gold-dim:     rgba(212,168,67,0.15);
+    --text:         #e8edf4;
+    --text-muted:   #7e93ad;
+    --text-faint:   #3d5470;
+    --border:       rgba(59,130,246,0.18);
+    --border-soft:  rgba(255,255,255,0.06);
+    --danger:       #e05252;
+    --danger-bg:    rgba(224,82,82,0.1);
+    --success:      #34d399;
+    --success-bg:   rgba(52,211,153,0.1);
+    --warn:         #f59e0b;
+    --radius:       12px;
+    --radius-sm:    8px;
+    --shadow:       0 8px 32px rgba(0,0,0,0.45);
+    --shadow-sm:    0 2px 12px rgba(0,0,0,0.3);
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 16px; scroll-behavior: smooth; }
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--navy);
+    color: var(--text);
+    min-height: 100vh;
+    padding-bottom: 40px;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+  }
+
+  /* ── HEADER ─────────────────────────── */
+  .app-header {
+    background: var(--navy-mid);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 18px 0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-top { display: flex; align-items: center; gap: 14px; padding-bottom: 16px; }
+  .header-icon {
+    width: 44px; height: 44px;
+    background: var(--accent-glow);
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; flex-shrink: 0;
+  }
+  .header-text h1 {
+    font-family: 'Playfair Display', serif;
+    font-size: 19px; font-weight: 700;
+    color: var(--text); line-height: 1.2;
+  }
+  .header-text p {
+    font-size: 11px; color: var(--text-muted);
+    font-weight: 300; letter-spacing: 2px;
+    text-transform: uppercase; margin-top: 2px;
+  }
+  .header-status {
+    margin-left: auto;
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(0,0,0,0.25);
+    border: 1px solid var(--border-soft);
+    padding: 5px 10px; border-radius: 20px;
+    flex-shrink: 0;
+  }
+  .status-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+  .status-dot.online      { background: var(--success); }
+  .status-dot.connecting  { background: var(--warn);    }
+  .status-dot.error       { background: var(--danger);  animation: none; }
+  @keyframes pulse {
+    0%,100% { opacity: 1; }
+    50%      { opacity: 0.4; }
+  }
+  #status-text { font-size: 10px; font-weight: 600; letter-spacing: 1px; color: var(--text-muted); }
+  .rainbow-bar {
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--gold), var(--accent));
+    opacity: 0.7;
+  }
+
+  /* ── NAV ────────────────────────────── */
+  .nav-tabs {
+    display: flex;
+    background: var(--navy-mid);
+    border-bottom: 1px solid var(--border-soft);
+    position: sticky; top: 97px; z-index: 99;
+  }
+  .nav-tab {
+    flex: 1; padding: 13px 10px;
+    background: transparent; border: none;
+    color: var(--text-muted);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px; font-weight: 600;
+    letter-spacing: 1.5px; text-transform: uppercase;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .nav-tab .badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px;
+    background: var(--accent); color: #fff;
+    font-size: 10px; font-weight: 700;
+    border-radius: 50%; margin-left: 5px; vertical-align: middle;
+  }
+
+  /* ── MAIN ───────────────────────────── */
+  .main { padding: 20px 16px; }
+  .panel { display: none; animation: fadeIn 0.25s ease; }
+  .panel.active { display: block; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── FORM CARD ──────────────────────── */
+  .form-card {
+    background: var(--navy-card);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    padding: 20px;
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 20px;
+  }
+  .form-card-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 16px; font-weight: 600; color: var(--text);
+    margin-bottom: 18px; padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-soft);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+  .field-group { margin-bottom: 14px; }
+  .field-group:last-of-type { margin-bottom: 0; }
+  .field-group label {
+    display: block; font-size: 10px; font-weight: 600;
+    letter-spacing: 2px; text-transform: uppercase;
+    color: var(--text-muted); margin-bottom: 7px;
+  }
+  .field-group input {
+    width: 100%;
+    background: var(--navy-light);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px; padding: 12px 14px;
+    outline: none;
+    transition: border-color 0.2s, background 0.2s;
+    -webkit-appearance: none;
+  }
+  .field-group input:focus { border-color: var(--accent); background: var(--navy-card); }
+  .field-group input::placeholder { color: var(--text-faint); }
+  input[type="date"]::-webkit-calendar-picker-indicator,
+  input[type="time"]::-webkit-calendar-picker-indicator {
+    filter: invert(0.55) sepia(1) saturate(1.5) hue-rotate(180deg); cursor: pointer;
+  }
+
+  /* ── BUTTONS ────────────────────────── */
+  .btn {
+    display: block; width: 100%; padding: 15px; border: none;
+    border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px; font-weight: 600; letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: transform 0.1s, opacity 0.2s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .btn:active { transform: scale(0.98); opacity: 0.9; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary {
+    background: var(--accent); color: #fff;
+    box-shadow: 0 4px 16px rgba(59,130,246,0.35);
+    margin-top: 20px;
+  }
+  .btn-secondary {
+    background: transparent; color: var(--text-muted);
+    border: 1px solid var(--border-soft);
+    margin-top: 10px; display: none;
+  }
+  .btn-secondary.visible { display: block; }
+
+  /* ── TOAST ──────────────────────────── */
+  .toast {
+    position: fixed; bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--navy-card);
+    border: 1px solid var(--border);
+    color: var(--text); padding: 12px 22px;
+    border-radius: 50px; font-size: 13px; font-weight: 500;
+    box-shadow: var(--shadow); z-index: 999;
+    opacity: 0; transition: all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    white-space: nowrap;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.success { border-color: var(--success); color: var(--success); }
+  .toast.danger  { border-color: var(--danger);  color: var(--danger); }
+
+  /* ── EMPTY ──────────────────────────── */
+  .empty-state {
+    text-align: center; padding: 56px 24px; color: var(--text-muted);
+  }
+  .empty-icon { font-size: 52px; margin-bottom: 16px; opacity: 0.35; }
+  .empty-state h3 {
+    font-family: 'Playfair Display', serif;
+    font-size: 18px; font-weight: 600; color: var(--text-faint); margin-bottom: 8px;
+  }
+  .empty-state p { font-size: 14px; color: var(--text-faint); line-height: 1.6; }
+
+  /* ── CARDS ──────────────────────────── */
+  .escala-list { display: flex; flex-direction: column; gap: 14px; }
+  .escala-card {
+    background: var(--navy-card);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    overflow: hidden; box-shadow: var(--shadow-sm);
+    animation: fadeIn 0.3s ease;
+    transition: border-color 0.2s;
+  }
+  .escala-card:hover { border-color: var(--border); }
+  .escala-card-header {
+    background: var(--navy-light); padding: 13px 16px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .escala-date-block { display: flex; align-items: center; gap: 10px; }
+  .escala-date-num {
+    background: var(--accent-glow); border: 1px solid var(--border);
+    border-radius: 8px; width: 44px; height: 44px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .escala-date-num .day {
+    font-family: 'Playfair Display', serif;
+    font-size: 18px; font-weight: 700; color: var(--accent); line-height: 1;
+  }
+  .escala-date-num .month {
+    font-size: 8px; font-weight: 600; letter-spacing: 1px;
+    text-transform: uppercase; color: var(--text-muted); margin-top: 1px;
+  }
+  .escala-date-info { display: flex; flex-direction: column; gap: 3px; }
+  .escala-date-full { font-size: 14px; font-weight: 600; color: var(--text); }
+  .escala-time-badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--gold-dim); border: 1px solid rgba(212,168,67,0.2);
+    color: var(--gold); font-size: 11px; font-weight: 600;
+    padding: 2px 8px; border-radius: 20px;
+  }
+  .dias-badge {
+    font-size: 10px; font-weight: 600;
+    padding: 4px 8px; border-radius: 20px;
+    letter-spacing: 0.5px; text-transform: uppercase;
+  }
+  .dias-badge.hoje    { background: var(--success-bg); color: var(--success); border: 1px solid rgba(52,211,153,0.25); }
+  .dias-badge.breve   { background: var(--gold-dim);   color: var(--gold);    border: 1px solid rgba(212,168,67,0.2); }
+  .dias-badge.normal  { background: var(--accent-glow);color: var(--accent);  border: 1px solid var(--border); }
+  .dias-badge.passado { background: transparent;       color: var(--text-faint); border: 1px solid var(--text-faint); }
+
+  .escala-card-body { padding: 14px 16px; }
+  .escala-row {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 8px 0; border-bottom: 1px solid var(--border-soft);
+  }
+  .escala-row:last-of-type { border-bottom: none; }
+  .escala-row-icon { font-size: 16px; margin-top: 1px; flex-shrink: 0; width: 22px; text-align: center; }
+  .escala-row-content { flex: 1; min-width: 0; }
+  .escala-row-label {
+    font-size: 10px; font-weight: 600; letter-spacing: 1.5px;
+    text-transform: uppercase; color: var(--text-muted); margin-bottom: 2px;
+  }
+  .escala-row-value { font-size: 14px; font-weight: 500; color: var(--text); line-height: 1.4; word-break: break-word; }
+
+  .escala-card-footer { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--border-soft); }
+  .escala-card-footer button {
+    padding: 13px 10px; background: transparent; border: none;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px; font-weight: 600;
+    letter-spacing: 1px; text-transform: uppercase;
+    cursor: pointer; transition: background 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .escala-card-footer button:active { opacity: 0.7; }
+  .btn-edit-card { color: var(--warn); border-right: 1px solid var(--border-soft) !important; }
+  .btn-edit-card:hover { background: rgba(245,158,11,0.07); }
+  .btn-del-card  { color: var(--danger); }
+  .btn-del-card:hover { background: var(--danger-bg); }
+
+  /* ── DIALOG ─────────────────────────── */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.65);
+    z-index: 200; display: none; align-items: flex-end;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+  .overlay.active { display: flex; animation: fadeIn 0.2s ease; }
+  .dialog {
+    background: var(--navy-card);
+    border: 1px solid var(--border); border-bottom: none;
+    border-radius: var(--radius) var(--radius) 0 0;
+    padding: 24px 20px; width: 100%;
+    animation: slideUp 0.25s cubic-bezier(0.34,1.2,0.64,1);
+  }
+  @keyframes slideUp {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+  .dialog h3 { font-family: 'Playfair Display', serif; font-size: 17px; font-weight: 600; margin-bottom: 8px; }
+  .dialog p  { font-size: 14px; color: var(--text-muted); line-height: 1.5; margin-bottom: 20px; }
+  .dialog-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .dialog-actions button {
+    padding: 14px; border-radius: var(--radius-sm);
+    font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 600;
+    cursor: pointer; border: none;
+    -webkit-tap-highlight-color: transparent; transition: opacity 0.15s;
+  }
+  .dialog-actions button:active { opacity: 0.75; }
+  .btn-dialog-cancel  { background: var(--navy-light); color: var(--text-muted); }
+  .btn-dialog-confirm { background: var(--danger); color: #fff; }
+
+  /* ── SETUP BANNER ───────────────────── */
+  .setup-banner {
+    background: rgba(212,168,67,0.08);
+    border: 1px solid rgba(212,168,67,0.3);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    margin-bottom: 20px;
+    display: none;
+  }
+  .setup-banner.visible { display: block; }
+  .setup-banner h3 { color: var(--gold); font-size: 14px; font-weight: 700; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+  .setup-banner p  { color: var(--text-muted); font-size: 13px; line-height: 1.6; }
+  .setup-banner code {
+    background: rgba(0,0,0,0.3); color: var(--gold);
+    padding: 1px 6px; border-radius: 4px; font-size: 12px;
+  }
+</style>
 </head>
 <body>
 
-<div class="container">
-    <header>
-        <h1>Escala do Louvor</h1>
-        <p>Gestão de Ministração e Backing Vocals</p>
-    </header>
-
-    <div class="card">
-        <h2 id="form-title">Agendar Nova Data</h2>
-        <form id="escala-form">
-            <input type="hidden" id="edit-index">
-            
-            <div class="form-group">
-                <label for="data">Data:</label>
-                <input type="date" id="data" required>
-            </div>
-            
-            <div class="form-group">
-                <label for="horario">Horário:</label>
-                <input type="time" id="horario" required>
-            </div>
-            
-            <div class="form-group">
-                <label for="vocal">Vocal Principal / Ministro:</label>
-                <input type="text" id="vocal" placeholder="Ex: João da Silva" required>
-            </div>
-            
-            <div class="form-group">
-                <label for="back">Backing Vocals:</label>
-                <input type="text" id="back" placeholder="Ex: Maria, Ana e Pedro" required>
-            </div>
-            
-            <button type="submit" id="btn-salvar">Salvar na Escala</button>
-            <button type="button" id="btn-cancelar" style="background:#95a5a6; margin-top:5px; display:none;">Cancelar Edição</button>
-        </form>
+<header class="app-header">
+  <div class="header-top">
+    <div class="header-icon">🎵</div>
+    <div class="header-text">
+      <h1>Escala do Louvor</h1>
+      <p>Ministério de Adoração</p>
     </div>
+    <div class="header-status">
+      <span class="status-dot connecting" id="status-dot"></span>
+      <span id="status-text">Conectando...</span>
+    </div>
+  </div>
+  <div class="rainbow-bar"></div>
+</header>
 
-    <h2>Escalas Agendadas</h2>
-    <div id="lista-escalas">
+<nav class="nav-tabs">
+  <button class="nav-tab active" id="tab-form" onclick="switchTab('form')">Nova Escala</button>
+  <button class="nav-tab" id="tab-lista" onclick="switchTab('lista')">
+    Escalas <span class="badge" id="badge-count" style="display:none">0</span>
+  </button>
+</nav>
+
+<main class="main">
+
+  <!-- AVISO DE CONFIGURAÇÃO -->
+  <div class="setup-banner" id="setup-banner">
+    <h3>⚙️ Configuração necessária</h3>
+    <p>
+      Antes de usar, substitua os dados do <code>firebaseConfig</code> no código.<br>
+      Siga o guia de instalação incluído neste pacote.
+    </p>
+  </div>
+
+  <!-- PAINEL FORMULÁRIO -->
+  <div class="panel active" id="panel-form">
+    <div class="form-card">
+      <div class="form-card-title">
+        <span>📋</span>
+        <span id="form-title-text">Agendar nova data</span>
+      </div>
+      <div class="field-row">
+        <div class="field-group">
+          <label for="data">Data</label>
+          <input type="date" id="data">
         </div>
+        <div class="field-group">
+          <label for="horario">Horário</label>
+          <input type="time" id="horario">
+        </div>
+      </div>
+      <div class="field-group">
+        <label for="vocal">🎤 Vocal Principal / Ministro</label>
+        <input type="text" id="vocal" placeholder="Ex: João da Silva" autocomplete="off">
+      </div>
+      <div class="field-group">
+        <label for="back">👥 Backing Vocals</label>
+        <input type="text" id="back" placeholder="Ex: Maria, Ana e Pedro" autocomplete="off">
+      </div>
+      <button class="btn btn-primary" id="btn-salvar" onclick="salvar()">Salvar na Escala</button>
+      <button class="btn btn-secondary" id="btn-cancelar" onclick="resetForm()">Cancelar edição</button>
+    </div>
+  </div>
+
+  <!-- PAINEL LISTA -->
+  <div class="panel" id="panel-lista">
+    <div id="lista-escalas">
+      <div class="empty-state">
+        <div class="empty-icon">🎶</div>
+        <h3>Conectando ao banco...</h3>
+        <p>Aguarde um instante.</p>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- DIALOG CONFIRMAÇÃO -->
+<div class="overlay" id="overlay" onclick="fecharDialog(event)">
+  <div class="dialog">
+    <h3>Remover escala?</h3>
+    <p id="dialog-desc">Esta ação não pode ser desfeita.</p>
+    <div class="dialog-actions">
+      <button class="btn-dialog-cancel"  onclick="fecharDialog()">Cancelar</button>
+      <button class="btn-dialog-confirm" onclick="confirmarExclusao()">Remover</button>
+    </div>
+  </div>
 </div>
 
-<script>
-    // Gerenciamento de Estado do App
-    let escalas = JSON.parse(localStorage.getItem('escalas_louvor')) || [];
-    const form = document.getElementById('escala-form');
-    const listaEscalas = document.getElementById('lista-escalas');
-    const editIndexField = document.getElementById('edit-index');
-    const formTitle = document.getElementById('form-title');
-    const btnCancelar = document.getElementById('btn-cancelar');
-
-    // Função para renderizar a lista na tela
-    function renderEscalas() {
-        listaEscalas.innerHTML = '';
-        
-        if (escalas.length === 0) {
-            listaEscalas.innerHTML = '<p style="text-align:center; color:#7f8c8d;">Nenhuma escala agendada.</p>';
-            return;
-        }
-
-        // Ordenar por data mais recente
-        escalas.sort((a, b) => new Date(a.data + 'T' + a.horario) - new Date(b.data + 'T' + b.horario));
-
-        escalas.forEach((escala, index) => {
-            // Formatar data para padrão brasileiro (DD/MM/AAAA)
-            const dataFormatada = escala.data.split('-').reverse().join('/');
-
-            const item = document.createElement('div');
-            item.className = 'escala-item';
-            item.innerHTML = `
-                <div class="escala-info">
-                    <p class="meta-dados">📅 ${dataFormatada} às ⏰ ${escala.horario}</p>
-                    <p><strong>🎤 Vocal:</strong> ${escala.vocal}</p>
-                    <p><strong>👥 Backs:</strong> ${escala.back}</p>
-                </div>
-                <div class="actions">
-                    <button class="btn-edit" onclick="editarEscala(${index})">Substituir/Editar</button>
-                    <button class="btn-danger" onclick="excluirEscala(${index})">Excluir</button>
-                </div>
-            `;
-            listaEscalas.appendChild(item);
-        });
-    }
-
-    // Função para adicionar ou editar
-    form.addEventListener('submit', function(e) {
-        e.preventDefault();
-        
-        const index = editIndexField.value;
-        const novaEscala = {
-            data: document.getElementById('data').value,
-            horario: document.getElementById('horario').value,
-            vocal: document.getElementById('vocal').value,
-            back: document.getElementById('back').value
-        };
-
-        if (index === '') {
-            // Incluir novo
-            escalas.push(novaEscala);
-        } else {
-            // Substituir existente (Editar)
-            escalas[index] = novaEscala;
-            resetForm();
-        }
-
-        salvarDados();
-        renderEscalas();
-        form.reset();
-    });
-
-    // Função para preparar os dados para substituição/edição
-    window.editarEscala = function(index) {
-        const esc = escalas[index];
-        document.getElementById('data').value = esc.data;
-        document.getElementById('horario').value = esc.horario;
-        document.getElementById('vocal').value = esc.vocal;
-        document.getElementById('back').value = esc.back;
-        
-        editIndexField.value = index;
-        formTitle.innerText = "Substituir / Editar Integrantes";
-        document.getElementById('btn-salvar').innerText = "Atualizar Escala";
-        btnCancelar.style.display = 'block';
-        window.scrollTo({top: 0, behavior: 'smooth'});
-    };
-
-    // Cancelar Edição
-    btnCancelar.addEventListener('click', resetForm);
-
-    function resetForm() {
-        form.reset();
-        editIndexField.value = '';
-        formTitle.innerText = "Agendar Nova Data";
-        document.getElementById('btn-salvar').innerText = "Salvar na Escala";
-        btnCancelar.style.display = 'none';
-    }
-
-    // Função para excluir data
-    window.excluirEscala = function(index) {
-        if(confirm("Tem certeza que deseja remover esta data da escala?")) {
-            escalas.splice(index, 1);
-            salvarDados();
-            renderEscalas();
-            resetForm();
-        }
-    };
-
-    // Salvar no LocalStorage do celular
-    function salvarDados() {
-        localStorage.setItem('escalas_louvor', JSON.stringify(escalas));
-    }
-
-    // Inicializar app
-    renderEscalas();
-</script>
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
 
 </body>
 </html>
+
